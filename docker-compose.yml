@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Redis 服务（Celery 消息代理）
+  redis:
+    image: redis:7-alpine
+    container_name: mail-sender-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI 应用
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mail-sender-api
+    ports:
+      - "10001:10001"
+    environment:
+      - DATABASE_URL=postgresql://fnfadmin:fnfadmin123@172.16.72.73:5433/mail_sender
+      - REDIS_URL=redis://redis:6379/0
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
+      - API_PORT=10001
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 10001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Celery Worker
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mail-sender-celery
+    environment:
+      - DATABASE_URL=postgresql://fnfadmin:fnfadmin123@172.16.72.73:5433/mail_sender
+      - REDIS_URL=redis://redis:6379/0
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.tasks worker --loglevel=info
+
+volumes:
+  redis_data:
