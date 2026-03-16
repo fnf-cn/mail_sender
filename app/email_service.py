@@ -43,8 +43,9 @@ class EmailService:
             message["To"] = to_email
             message["Subject"] = subject
 
-            # 添加邮件正文
-            message.attach(MIMEText(body, "plain", "utf-8"))
+            # 添加邮件正文（自动检测 HTML）
+            content_type = "html" if body.strip().startswith("<") else "plain"
+            message.attach(MIMEText(body, content_type, "utf-8"))
 
             # 添加附件
             if attachment_paths:
